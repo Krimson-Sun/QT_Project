@@ -5,7 +5,7 @@ import sqlite3
 import sys
 from os.path import join as path_to
 import matplotlib.pyplot as plt
-from time import sleep
+import subprocess
 
 ADDRESS = path_to('data', 'qt_project_database.db')
 AUTHED_USER_ID = 0
@@ -26,20 +26,15 @@ sys.excepthook = log_uncaught_exceptions
 
 
 def read_tasks(student_id):
-    pass
-    # тут должна быть функция для чтения монолога препода
-    # s = db.get_info('exercises', 'exercise_options', column='id', condition=student_id)[0][0]
-    # tasks = s.split(' | ')
-    # return tasks
+    res = db.get_info('Students', 'last_task', column='studentID', condition=student_id)[0][0]
+    print(res)
+    return res
 
 
 def save_task(student_id, task):
-    pass
-    # а тут для записи
-
-
-def check_answers(answers):
-    pass
+    res = db.update_info('Students', 'last_task', task, 'studentID', student_id)
+    print(res)
+    return res
 
 
 def show_stats(student_id):
@@ -47,7 +42,11 @@ def show_stats(student_id):
                         condition=student_id)[0]
 
     labels = ('Верно', 'Неверно')
-    sizes = [stats[1], 100 - stats[1]]
+    try:
+        sizes = [stats[1], 100 - stats[1]]
+    except TypeError:
+        QMessageBox.warning(None, 'Ошибка', 'Ученик еще не решил ни одного задания')
+        return None
 
     fig1, ax1 = plt.subplots()
     explode = (0, 0.1)
@@ -83,8 +82,17 @@ class Database:
         print(result)
         return result if result else None
 
-    def del_info(self):
-        pass
+    def update_info(self, table, column, value, cond_col, cond_key):
+        if type(cond_key) == str:
+            cond_key = f'"{cond_key}"'
+        if type(value) == str:
+            value = f'"{value}"'
+        request = f'UPDATE {table} SET {column} = {value} WHERE {cond_col} = {cond_key}'
+        print(request)
+        result = self.cur.execute(request).fetchall()
+        print(result)
+        self.con.commit()
+        return result if result else None
 
     def add_info(self, table, values, columns=None):
         if columns:
@@ -210,6 +218,10 @@ class MainWindow(QWidget):
             self.show_students_b.clicked.connect(self.show_students)
 
         else:
+            self.task = QLabel(self)
+            self.task.setText(f'Последнее задание: {read_tasks(AUTHED_USER_ID)}')
+            self.task.move(50, 275)
+
             self.start_work_ = QPushButton(self)
             self.start_work_.resize(200, 50)
             self.start_work_.move(100, 100)
@@ -221,6 +233,12 @@ class MainWindow(QWidget):
             self.show_tasks_.move(350, 100)
             self.show_tasks_.setText('Смотреть статистику')
             self.show_tasks_.clicked.connect(lambda x: show_stats(AUTHED_USER_ID))
+
+            self.change_name = QPushButton(self)
+            self.change_name.resize(200, 50)
+            self.change_name.move(225, 200)
+            self.change_name.setText('Сменить имя')
+            self.change_name.clicked.connect(self.name_changer)
 
     def quit(self):
         global AUTHED_USER_NAME, AUTHED_USER_ID, AUTHED_USER_STATUS
@@ -241,8 +259,37 @@ class MainWindow(QWidget):
         self.new = StartWork()
         self.new.show()
 
-    # def show_stats(self):
-    #     show_stats()
+    def name_changer(self):
+        self.new = NameChanger()
+        self.new.show()
+
+
+class NameChanger(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setGeometry(100, 100, 325, 300)
+        self.setWindowTitle('Сменить имя')
+        self.setStyleSheet('background-color: #eeeeee')
+
+        self.name_input = QLineEdit(self)
+        self.name_input.setGeometry(100, 100, 150, 50)
+
+        self.input_done = QPushButton(self)
+        self.input_done.resize(200, 50)
+        self.input_done.move(50, 220)
+        self.input_done.setText('Сменить')
+        self.input_done.clicked.connect(self.change_name)
+
+    def change_name(self):
+        global AUTHED_USER_ID
+        db.update_info('Students', 'student_names', self.name_input.text(), 'studentID', AUTHED_USER_ID)
+        print('name changed successfully')
+        self.close()
+        win.main.close()
+        subprocess.call("python passes.py", shell=True)
 
 
 # noinspection PyAttributeOutsideInit
@@ -251,6 +298,7 @@ class StartWork(QStackedWidget):
         super().__init__()
         self.answers = []
         self.committed = False
+        self.wins = []
         self.initUI()
 
     def initUI(self):
@@ -259,63 +307,65 @@ class StartWork(QStackedWidget):
         self.setStyleSheet('background-color: #eeeeee')
 
         exercises = db.get_info('exercises', '*')
-
-        self.exercises_wins = QStackedWidget(self)
-
+        i = 0
         for exercise in exercises:
-            self.exercises_wins.addWidget(Exercise(exercise, self))
+            self.wins.append(Exercise(exercise, self, i, len(exercises)))
+            i += 1
 
-        for i in range(1, len(exercises) + 1):
-            self.exercises_wins.setCurrentIndex(i)
-            while not self.committed:
-                pass
-
-        self.new = Results()
-        self.new.show()
-        self.close()
+        for i in range(len(exercises) - 1, -1, -1):
+            self.committed = False
+            self.wins[i].show()
 
 
 # noinspection PyAttributeOutsideInit
 class Exercise(QWidget):
-    def __init__(self, exercise, parent):
+    def __init__(self, exercise, parent, i, length):
         super().__init__()
-        self.parent = parent
+        self.parent, self.i, self.length = parent, i, length
         self.initUI(exercise)
 
     def initUI(self, exercise):
+        print(exercise)
         self.setGeometry(100, 100, 650, 600)
         self.setWindowTitle('Задания')
         self.setStyleSheet('background-color: #eeeeee')
+        # print(1)
 
         self.id, self.img, self.text, self.options, self.right_answer, self.link = exercise
-        print(self.id)
         self.img = QPixmap(path_to('data/images', self.img))
         self.options = self.options.split(' | ')
+        # print(2)
 
         self.img_label = QLabel(self)
         self.img_label.setPixmap(self.img)
         self.img_label.resize(604, 225)
         self.img_label.move(0, 0)
+        # print(3)
 
-        print(self.options)
+        self.password_label = QLabel(self)
+        self.password_label.setText(self.text)
+        self.password_label.move(50, 250)
 
         self.radio_button_1 = QRadioButton(self)
         self.radio_button_1.setChecked(True)
         self.radio_button_1.resize(500, 50)
         self.radio_button_1.move(50, 300)
         self.radio_button_1.setText(self.options[0])
+        # print(4)
 
         self.radio_button_2 = QRadioButton(self)
         self.radio_button_2.setChecked(True)
         self.radio_button_2.resize(500, 50)
         self.radio_button_2.setText(self.options[1])
         self.radio_button_2.move(50, 350)
+        # print(5)
 
         self.radio_button_3 = QRadioButton(self)
         self.radio_button_3.setChecked(True)
         self.radio_button_3.resize(500, 50)
         self.radio_button_3.setText(self.options[2])
         self.radio_button_3.move(50, 400)
+        # print(6)
 
         self.commit_answer = QPushButton(self)
         self.commit_answer.resize(200, 50)
@@ -324,6 +374,7 @@ class Exercise(QWidget):
         self.commit_answer.clicked.connect(self.committing_answer)
 
     def committing_answer(self):
+        # print(7)
         self.ans = 1
         if self.radio_button_2.clicked:
             self.ans = 2
@@ -333,31 +384,51 @@ class Exercise(QWidget):
             self.parent.answers.append((True, self.ans, self.ans))
         else:
             self.parent.answers.append((False, self.ans, self.right_answer))
+        self.done = True
+        self.close()
         self.parent.committed = True
+        if self.i + 1 == self.length:
+            Results(self.parent.answers)
+
+    def returning(self):
+        return self.ready
 
 
 # noinspection PyAttributeOutsideInit
-class Results(QWidget):
-    def __init__(self):
-        super().__init__()
+class Results:
+    def __init__(self, answers):
+        self.answers = answers
+        print(11111)
         self.initUI()
 
     def initUI(self):
-        self.setGeometry(100, 100, 650, 400)
-        self.setWindowTitle('Статистика')
-        self.setStyleSheet('background-color: #eeeeee')
+        amount = len(self.answers)
+        efficency_rate = 0
+        for exercise in self.answers:
+            if exercise[0]:
+                efficency_rate += 1
+        db_stats = db.get_info('Students', ('student_experience', 'student_efficiency'), column='studentID',
+                               condition=AUTHED_USER_ID)[0]
+        print(db_stats, 'совсем изначальные')
+        stats = [db_stats[0] * db_stats[1] // 100, db_stats[0] - (db_stats[0] * db_stats[1] // 100)]
+        print(stats, 'изначальные')
+        stats = [stats[0] + efficency_rate, stats[1] + amount - efficency_rate]
+        print(stats, 'новые')
+        stats = [sum(stats), stats[0] / (sum(stats) / 100)]
+        print(stats, 'в таблицу')
+        db.update_info('Students', 'student_experience', stats[0], 'studentID', AUTHED_USER_ID)
+        db.update_info('Students', 'student_efficiency', stats[1], 'studentID', AUTHED_USER_ID)
+        efficency_rate = efficency_rate / amount * 100
+        labels = ('Верно', 'Неверно')
+        sizes = [efficency_rate, 100 - efficency_rate]
 
+        fig1, ax1 = plt.subplots()
+        explode = (0, 0.1)
+        ax1.pie(sizes, explode=explode, labels=labels, autopct='%1.1f%%',
+                shadow=True, startangle=90)
 
-# noinspection PyAttributeOutsideInit
-class ShowStats(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.initUI()
-
-    def initUI(self):
-        self.setGeometry(100, 100, 650, 400)
-        self.setWindowTitle('Статистика')
-        self.setStyleSheet('background-color: #eeeeee')
+        plt.title('Статистика')
+        plt.show()
 
 
 # noinspection PyAttributeOutsideInit
@@ -421,7 +492,7 @@ class ShowStudents(QWidget):
         self.table = QTableWidget(self)
         self.table.setGeometry(0, 50, 650, 350)
         # self.table.setColumnWidth(100, 100)
-        self.table.setColumnCount(4)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(['ID', 'Пароль', 'ФИО', ''])
 
         students = db.get_info('Students', ("studentID", "student_password", "student_names"), 'teacherID',
@@ -438,7 +509,12 @@ class ShowStudents(QWidget):
             self.btn.setText(f'Задать задание')
             self.btn.clicked.connect(lambda f, idd=elem[0]: self.create_task(idd))
 
+            self.btn_stats = QPushButton(self)
+            self.btn_stats.setText(f'Смотреть статистику')
+            self.btn_stats.clicked.connect(lambda f, idd=elem[0]: show_stats(idd))
+
             self.table.setCellWidget(i, 3, self.btn)
+            self.table.setCellWidget(i, 4, self.btn_stats)
 
         self.table.resizeColumnsToContents()
 
@@ -447,6 +523,7 @@ class ShowStudents(QWidget):
         self.new.show()
 
 
+# noinspection PyAttributeOutsideInit
 class CreateTask(QWidget):
     def __init__(self, student_id):
         self.student_id = student_id
@@ -465,7 +542,11 @@ class CreateTask(QWidget):
         self.input_done.resize(200, 50)
         self.input_done.move(220, 220)
         self.input_done.setText('Отправить')
-        self.input_done.clicked.connect(lambda x: save_task(self.student_id, self.task_input.text()))
+        self.input_done.clicked.connect(self.send_task)
+
+    def send_task(self):
+        save_task(self.student_id, self.task_input.text())
+        self.close()
 
 
 if __name__ == '__main__':
