@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QApplication, QPushButton, QLabel, QMessageBox, QStackedWidget
+from PyQt5.QtWidgets import QWidget, QApplication, QPushButton, QLabel, QMessageBox
 from PyQt5.QtWidgets import QLineEdit, QTableWidget, QTableWidgetItem, QRadioButton
 from PyQt5.QtGui import QPixmap
 import sqlite3
@@ -7,13 +7,13 @@ from os.path import join as path_to
 import matplotlib.pyplot as plt
 import subprocess
 
-ADDRESS = path_to('data', 'qt_project_database.db')
-AUTHED_USER_ID = 0
-AUTHED_USER_STATUS = 'student'
-AUTHED_USER_NAME = ''
+ADDRESS = path_to('data', 'qt_project_database.db')  # путь до БД
+AUTHED_USER_ID = 0  # идентификатор авторизованного пользователя в БД
+AUTHED_USER_STATUS = 'student'  # ученик/преподаватель
+AUTHED_USER_NAME = ''  # используется для учеников
 
 
-def log_uncaught_exceptions(ex_cls, ex, tb):
+def log_uncaught_exceptions(ex_cls, ex, tb):  # функция для отображения ошибок PyQT
     text = '{}: {}:\n'.format(ex_cls.__name__, ex)
     import traceback
     text += ''.join(traceback.format_tb(tb))
@@ -27,17 +27,17 @@ sys.excepthook = log_uncaught_exceptions
 
 def read_tasks(student_id):
     res = db.get_info('Students', 'last_task', column='studentID', condition=student_id)[0][0]
-    print(res)
+    print(res)  # логгирование в консоль
     return res
 
 
 def save_task(student_id, task):
     res = db.update_info('Students', 'last_task', task, 'studentID', student_id)
-    print(res)
+    print(res)  # логгирование в консоль
     return res
 
 
-def show_stats(student_id):
+def show_stats(student_id):  # открывает окно с диаграммой
     stats = db.get_info('Students', ('student_experience', 'student_efficiency'), column='studentID',
                         condition=student_id)[0]
 
@@ -57,7 +57,7 @@ def show_stats(student_id):
     plt.show()
 
 
-class Database:
+class Database:  # инкапсуляция работы с БД
     def __init__(self):
         self.con = sqlite3.connect(ADDRESS)
         self.cur = self.con.cursor()
@@ -77,9 +77,9 @@ class Database:
                 return None
         else:
             request = f'SELECT {rows} FROM {table}'
-        print(request)
+        print(request)  # логгирование в консоль
         result = self.cur.execute(request).fetchall()
-        print(result)
+        print(result)  # логгирование в консоль
         return result if result else None
 
     def update_info(self, table, column, value, cond_col, cond_key):
@@ -88,9 +88,9 @@ class Database:
         if type(value) == str:
             value = f'"{value}"'
         request = f'UPDATE {table} SET {column} = {value} WHERE {cond_col} = {cond_key}'
-        print(request)
+        print(request)  # логгирование в консоль
         result = self.cur.execute(request).fetchall()
-        print(result)
+        print(result)  # логгирование в консоль
         self.con.commit()
         return result if result else None
 
@@ -99,14 +99,14 @@ class Database:
             request = f'''INSERT INTO {table}({",".join(columns)}) VALUES{tuple(values)}'''
         else:
             request = f'''INSERT INTO {table} VALUES{tuple(values)}'''
-        print('adding request:', request)
+        print('adding request:', request)  # логгирование в консоль
         result = self.cur.execute(request)
-        print('adding result:', result)
+        print('adding result:', result)  # логгирование в консоль
         self.con.commit()
         return result if result else None
 
 
-class AuthWindow(QWidget):
+class AuthWindow(QWidget):  # первое окно, проверяет данные аккаунта
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -140,12 +140,12 @@ class AuthWindow(QWidget):
     def auth(self):
         global AUTHED_USER_ID, AUTHED_USER_STATUS, AUTHED_USER_NAME
         login, password = self.login_input.text(), self.password_input.text()
-        print(login, password)
-        if login.isdigit():
+        print(login, password)  # логгирование в консоль
+        if login.isdigit():  # ученики используют id в качестве логина, а преподаватели - имя
             res = db.get_info('Students', 'student_password', column='studentID', condition=login)[0][0]
             if res:
                 if res == password:
-                    print(f'successfully logged in as {login}')
+                    print(f'successfully logged in as {login}')  # логгирование в консоль
                     AUTHED_USER_STATUS = 'student'
                     AUTHED_USER_NAME = db.get_info('Students', 'student_names', column='studentID', condition=login)[0][
                         0]
@@ -154,14 +154,14 @@ class AuthWindow(QWidget):
                     self.main.show()
                     self.close()
                 else:
-                    print('log in failed')
+                    print('log in failed')  # логгирование в консоль
                     QMessageBox.critical(None, 'Ошибка',
                                          'Авторизация не удалась. Проверьте правильность введенных данных и повторите '
                                          'попытку')
         else:
             try:
                 res = db.get_info('teachers', 'teacher_password', column='teacher_login', condition=login)[0][0]
-                print('res: ', res)
+                print('res: ', res)  # логгирование в консоль
                 if res == password:
                     print(f'successfully logged in as {login}')
                     AUTHED_USER_ID = db.get_info('teachers', 'teacherID', column='teacher_login', condition=login)[0][0]
@@ -171,7 +171,7 @@ class AuthWindow(QWidget):
                     self.main.show()
                     self.close()
                 else:
-                    print('log in failed')
+                    print('log in failed')  # логгирование в консоль
                     QMessageBox.critical(None, 'Ошибка',
                                          'Авторизация не удалась. Проверьте правильность введенных данных и повторите '
                                          'попытку')
@@ -181,7 +181,7 @@ class AuthWindow(QWidget):
 
 
 # noinspection PyAttributeOutsideInit
-class MainWindow(QWidget):
+class MainWindow(QWidget):  # меню приложения, меняется в зависимости от AUTHED_USER_STATUS
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -264,6 +264,7 @@ class MainWindow(QWidget):
         self.new.show()
 
 
+# noinspection PyAttributeOutsideInit
 class NameChanger(QWidget):
     def __init__(self):
         super().__init__()
@@ -286,14 +287,14 @@ class NameChanger(QWidget):
     def change_name(self):
         global AUTHED_USER_ID
         db.update_info('Students', 'student_names', self.name_input.text(), 'studentID', AUTHED_USER_ID)
-        print('name changed successfully')
+        print('name changed successfully')  # логгирование в консоль
         self.close()
         win.main.close()
-        subprocess.call("python passes.py", shell=True)
+        subprocess.call("python passes.py", shell=True)  # перезапуск приложения с обновленным именем
 
 
 # noinspection PyAttributeOutsideInit
-class StartWork(QStackedWidget):
+class StartWork(QWidget):  #  вывод заданий
     def __init__(self):
         super().__init__()
         self.answers = []
@@ -318,29 +319,26 @@ class StartWork(QStackedWidget):
 
 
 # noinspection PyAttributeOutsideInit
-class Exercise(QWidget):
+class Exercise(QWidget):  #  окно задания
     def __init__(self, exercise, parent, i, length):
         super().__init__()
         self.parent, self.i, self.length = parent, i, length
         self.initUI(exercise)
 
     def initUI(self, exercise):
-        print(exercise)
+        print(exercise)  # логгирование в консоль
         self.setGeometry(100, 100, 650, 600)
         self.setWindowTitle('Задания')
         self.setStyleSheet('background-color: #eeeeee')
-        # print(1)
 
         self.id, self.img, self.text, self.options, self.right_answer, self.link = exercise
         self.img = QPixmap(path_to('data/images', self.img))
         self.options = self.options.split(' | ')
-        # print(2)
 
         self.img_label = QLabel(self)
         self.img_label.setPixmap(self.img)
         self.img_label.resize(604, 225)
         self.img_label.move(0, 0)
-        # print(3)
 
         self.password_label = QLabel(self)
         self.password_label.setText(self.text)
@@ -351,21 +349,18 @@ class Exercise(QWidget):
         self.radio_button_1.resize(500, 50)
         self.radio_button_1.move(50, 300)
         self.radio_button_1.setText(self.options[0])
-        # print(4)
 
         self.radio_button_2 = QRadioButton(self)
         self.radio_button_2.setChecked(True)
         self.radio_button_2.resize(500, 50)
         self.radio_button_2.setText(self.options[1])
         self.radio_button_2.move(50, 350)
-        # print(5)
 
         self.radio_button_3 = QRadioButton(self)
         self.radio_button_3.setChecked(True)
         self.radio_button_3.resize(500, 50)
         self.radio_button_3.setText(self.options[2])
         self.radio_button_3.move(50, 400)
-        # print(6)
 
         self.commit_answer = QPushButton(self)
         self.commit_answer.resize(200, 50)
@@ -374,7 +369,6 @@ class Exercise(QWidget):
         self.commit_answer.clicked.connect(self.committing_answer)
 
     def committing_answer(self):
-        # print(7)
         self.ans = 1
         if self.radio_button_2.clicked:
             self.ans = 2
@@ -395,7 +389,7 @@ class Exercise(QWidget):
 
 
 # noinspection PyAttributeOutsideInit
-class Results:
+class Results:  # после завершения работы обновляет статистику ученика в БД и выводит диаграмму по итогам работы
     def __init__(self, answers):
         self.answers = answers
         print(11111)
@@ -409,13 +403,13 @@ class Results:
                 efficency_rate += 1
         db_stats = db.get_info('Students', ('student_experience', 'student_efficiency'), column='studentID',
                                condition=AUTHED_USER_ID)[0]
-        print(db_stats, 'совсем изначальные')
+        print(db_stats, 'совсем изначальные')  # логгирование в консоль
         stats = [db_stats[0] * db_stats[1] // 100, db_stats[0] - (db_stats[0] * db_stats[1] // 100)]
-        print(stats, 'изначальные')
+        print(stats, 'изначальные')  # логгирование в консоль
         stats = [stats[0] + efficency_rate, stats[1] + amount - efficency_rate]
-        print(stats, 'новые')
+        print(stats, 'новые')  # логгирование в консоль
         stats = [sum(stats), stats[0] / (sum(stats) / 100)]
-        print(stats, 'в таблицу')
+        print(stats, 'в таблицу')  # логгирование в консоль
         db.update_info('Students', 'student_experience', stats[0], 'studentID', AUTHED_USER_ID)
         db.update_info('Students', 'student_efficiency', stats[1], 'studentID', AUTHED_USER_ID)
         efficency_rate = efficency_rate / amount * 100
@@ -471,7 +465,7 @@ class NewStudent(QWidget):
         try:
             db.add_info('Students', (AUTHED_USER_ID, self.password_input.text(), self.names_input.text()),
                         ('teacherID', 'student_password', 'student_names'))
-            print('a new student created successfully')
+            print('a new student created successfully')  # логгирование в консоль
             self.close()
         except Exception as e:
             print('creation of a new student failed cause of', e)
